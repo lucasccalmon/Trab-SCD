@@ -58,7 +58,7 @@ def escrever_log(tipo, pid, direcao):
     log_line = f"[LOG] {agora} | {direcao} | {tipos[tipo]} | Processo {pid}\n"
     
     # Abertura em modo 'append' (a) para não sobrescrever os registros anteriores
-    with open("coordenador_log.txt", "a") as f:
+    with open("coordenador_log2.txt", "a") as f:
         f.write(log_line)
 
 
@@ -178,7 +178,7 @@ def thread_interface():
 
 if __name__ == "__main__":
     # Inicialização: limpa ou cria o arquivo de log para uma nova execução limpa 
-    open("coordenador_log.txt", "w").close()
+    open("coordenador_log2.txt", "w").close()
     
     # Criação do socket principal TCP (SOCK_STREAM) utilizando IPV4 (AF_INET)
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

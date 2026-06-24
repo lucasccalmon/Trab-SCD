@@ -10,7 +10,7 @@ r = int(sys.argv[2])
 k = float(sys.argv[3])
 
 # Limpa o arquivo de resultados de testes anteriores
-open("resultado.txt", "w").close()
+open("resultado2.txt", "w").close()
 
 processos = []
 
@@ -25,4 +25,4 @@ for i in range(1, n + 1):
 for p in processos:
     p.wait()
 
-print(f"\nTeste finalizado. Verifique o arquivo 'resultado.txt' e 'coordenador_log.txt'.")
+print(f"\nTeste finalizado. Verifique o arquivo 'resultado2.txt' e 'coordenador_log.txt'.")

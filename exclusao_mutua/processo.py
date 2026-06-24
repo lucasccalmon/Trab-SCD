@@ -1,6 +1,7 @@
 import socket
 import sys
 import time
+import random
 from datetime import datetime
 
 # CONSTANTES DE COMUNICAÇÃO
@@ -48,6 +49,12 @@ def main():
     # LOOP PRINCIPAL DE REPETIÇÕES (Executa r vezes) 
     for _ in range(r):
         # ------------------------------------------------------------
+        # NOVO: Tempo de Processamento Local (Espera Aleatória)
+        # ------------------------------------------------------------
+        # Sorteia um tempo entre 0.1 e 2.0 segundos para simular trabalho local
+        tempo_local = random.uniform(0.1, 2.0)
+        time.sleep(tempo_local)
+        # ------------------------------------------------------------
         # PASSO 1: Enviar pedido de acesso (REQUEST) 
         # ------------------------------------------------------------
         s.sendall(formatar_msg(1, pid))
@@ -71,7 +78,7 @@ def main():
             
             # Operação de I/O Segura: Abre o arquivo compartilhado em modo Append ('a') 
             # Múltiplos processos rodam na mesma máquina escrevendo no mesmo arquivo físico.
-            with open("resultado.txt", "a") as f:
+            with open("resultado2.txt", "a") as f:
                 f.write(f"PID: {pid:02d} | Hora: {hora_formatada}\n")
             
             # Simulação de processamento pesado dentro da Região Crítica 
