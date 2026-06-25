@@ -5,14 +5,16 @@ import random
 from datetime import datetime
 
 # CONSTANTES DE COMUNICAÇÃO
-F = 10              # Alinhamento obrigatório de mensagens em 10 bytes.
-HOST = '127.0.0.1'   # IP do coordenador centralizador.
-PORT = 5000         # Porta do coordenador centralizador.
+F = 10              # Tamanho da mensagem (10 bytes)
+HOST = '127.0.0.1'  # localhost
+PORT = 5000         # Porta TCP
 
 
 def formatar_msg(tipo, pid):
     """
-    Garante que as mensagens do processo tenham o mesmo tamanho padrão do Coordenador (F bytes).
+    Prepara a mensagem pra enviar na rede. 
+    Coloca no formato 'TIPO|PID|' e preenche com zeros no final até dar 10 caracteres certinho.
+    Exemplo de saída: '1|3|000000'
     """
     msg = f"{tipo}|{pid}|"
     return msg.ljust(F, '0')[:F].encode('utf-8')
@@ -20,24 +22,25 @@ def formatar_msg(tipo, pid):
 
 def parse_msg(msg_bytes):
     """
-    Interpreta os comandos de resposta vindos do Coordenador da rede.
+    Quando recebe dados da rede, essa função corta o texto no '|' 
+    para descobrir de qual tipo é a mensagem e quem enviou (PID).
     """
     partes = msg_bytes.decode('utf-8').split('|')
     return int(partes[0]), int(partes[1])
 
 
 def main():
-    # Validação dos argumentos passados via prompt de comando/terminal 
+    # aviso de erro
     if len(sys.argv) != 4:
         print("Erro de sintaxe! Uso correto: python processo.py <PID> <r_repeticoes> <k_segundos>")
         sys.exit(1)
         
-    # Atribuição dos parâmetros informados pelo usuário/script de carga 
-    pid = int(sys.argv[1]) # Identificador único do processo 
-    r = int(sys.argv[2])   # Quantidade total de vezes que este nó tentará entrar na Região Crítica 
-    k = float(sys.argv[3]) # Tempo em segundos de permanência simulada na Região Crítica 
+   # Pega os números que o usuário digitou no terminal
+    pid = int(sys.argv[1]) # Quem eu sou (Identificador)
+    r = int(sys.argv[2])   # Quantas vezes vou tentar entrar na Região Crítica (r)
+    k = float(sys.argv[3]) # Quantos segundos vou ficar lá dentro "trabalhando" (k)
     
-    # Configuração inicial do socket cliente TCP
+    # Configuração inicial do socket cliente TCP pra ligar pro Coordenador
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         # Estabelece conexão direta com o coordenador central 
@@ -49,9 +52,9 @@ def main():
     # LOOP PRINCIPAL DE REPETIÇÕES (Executa r vezes) 
     for _ in range(r):
         # ------------------------------------------------------------
-        # NOVO: Tempo de Processamento Local (Espera Aleatória)
+        # Espera Aleatória
         # ------------------------------------------------------------
-        # Sorteia um tempo entre 0.1 e 2.0 segundos para simular trabalho local
+        # Dá um sleep de 0.1 a 2 segundos pra simular um trabalho qualquer do processo.
         tempo_local = random.uniform(0.1, 2.0)
         time.sleep(tempo_local)
         # ------------------------------------------------------------
@@ -60,7 +63,7 @@ def main():
         s.sendall(formatar_msg(1, pid))
         
         # ------------------------------------------------------------
-        # PASSO 2: Bloqueio de Sincronismo (Aguardando o GRANT) 
+        # PASSO 2: Bloqueio (Aguardando o GRANT) 
         # ------------------------------------------------------------
         # O fluxo do programa congela nesta linha até que o Coordenador decida enviar F bytes
         data = s.recv(F)
@@ -81,7 +84,7 @@ def main():
             with open("resultado2.txt", "a") as f:
                 f.write(f"PID: {pid:02d} | Hora: {hora_formatada}\n")
             
-            # Simulação de processamento pesado dentro da Região Crítica 
+            # Simulação de processamento  dentro da Região Crítica 
             # Mantém o trinco sobre o recurso exclusivo durante k segundos antes de liberar 
             time.sleep(k)
             

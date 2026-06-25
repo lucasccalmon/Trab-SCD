@@ -7,39 +7,40 @@ import time
 from datetime import datetime
 
 # CONSTANTES DO SISTEMA
-F = 10         # Tamanho fixo de todas as mensagens em bytes, conforme especificação.
-HOST = '127.0.0.1'  # Endereço IP local (localhost) para comunicação.
-PORT = 5000         # Porta TCP utilizada para escutar as conexões dos processos.
+F = 10         #  tamanho da mensagem (10 bytes). 
+HOST = '127.0.0.1'  # localhost
+PORT = 5000         # porta TCP utilizada para escutar as conexões dos processos.
 
-# ESTRUTURAS DE DADOS COMPARTILHADAS (ZONA CRÍTICA DO COORDENADOR)
-request_queue = []   # Fila convencional (FIFO) que armazena a ordem dos PIDs que aguardam a Região Crítica.
-counts = {}          # Dicionário/Mapa para registrar quantas vezes cada processo (PID) foi atendido.
-sockets_map = {}     # Mapeamento de {PID: objeto_socket} para saber por qual canal responder a cada processo.
-current_in_cs = None # Variável que armazena o PID do processo que está atualmente dentro da Região Crítica.
+# VARIÁVEIS COMPARTILHADAS (ZONA CRÍTICA)
+request_queue = []   # fila convencional (FIFO) que armazena a ordem dos PIDs que aguardam a Região Crítica.
+counts = {}          # dicionário pra anotar quantas vezes cada processo usou a Região Crítica.
+sockets_map = {}     # mapeamento de {PID: objeto_socket} para saber por qual canal responder a cada processo.
+current_in_cs = None # guarda quem está usando a Região Crítica AGORA. Se for None, tá livre.
 
-# MECANISMO DE SINCRONIZAÇÃO INTERNA
-# Lock necessário porque a Thread do Algoritmo e a Thread de Interface manipulam as mesmas variáveis acima.
+# MECANISMO DE SINCRONIZAÇÃO INTERNA (lock)
+# impede que o menu do terminal e o algoritmo mexam na fila ao mesmo tempo e quebrem o código.
 lock = threading.Lock()
 
 # FILA DE EVENTOS THREAD-SAFE
-# Utilizada para canalizar todas as mensagens recebidas pelas threads de escuta em um único fluxo ordenado.
+# utilizada para canalizar todas as mensagens recebidas pelas threads de escuta em um único fluxo ordenado.
 event_queue = queue.Queue()
 
 
 def formatar_msg(tipo, pid):
     """
-    Garante o formato de mensagem estipulado: TIPO|PID|PADROAMENTO.
-    Preenche com zeros à direita até atingir exatamente F bytes.
+    Prepara a mensagem pra enviar na rede. 
+    Coloca no formato 'TIPO|PID|' e preenche com zeros no final até dar 10 caracteres certinho.
+    Exemplo de saída: '1|3|000000'
     """
     msg = f"{tipo}|{pid}|"
-    # ljust preenche com '0' à direita até o tamanho F. O f-string garante o padrão.
+    # ljust preenche com '0' à direita até o tamanho F.
     return msg.ljust(F, '0')[:F].encode('utf-8')
 
 
 def parse_msg(msg_bytes):
     """
-    Decodifica os bytes recebidos e extrai os campos utilizando o separador '|'.
-    Retorna uma tupla (tipo, pid) convertida para inteiros.
+    Quando recebe dados da rede, essa função corta o texto no '|' 
+    para descobrir de qual tipo é a mensagem e quem enviou (PID).
     """
     try:
         partes = msg_bytes.decode('utf-8').split('|')
@@ -51,7 +52,7 @@ def parse_msg(msg_bytes):
 def escrever_log(tipo, pid, direcao):
     """
     Grava o histórico de mensagens enviadas e recebidas em um arquivo de log local.
-    Inclui carimbo de data/hora com precisão de milissegundos.
+    Salva a hora exata e se a mensagem foi enviada ou recebida.
     """
     tipos = {1: "REQUEST", 2: "GRANT", 3: "RELEASE"}
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -64,8 +65,9 @@ def escrever_log(tipo, pid, direcao):
 
 def client_handler(conn):
     """
-    THREAD DE ESCUTA INDIVIDUAL: Criada uma para cada processo cliente conectado.
-    Fica bloqueada no 'conn.recv' aguardando pacotes vindos da rede.
+    THREAD DE ESCUTA INDIVIDUAL: para cada processo que conecta, criamos um 'escutador' desses.
+    Ele fica travado aqui esperando chegar uma mensagem. Quando chega, 
+    ele simplesmente joga ela na 'event_queue' pro cérebro processar.
     """
     while True:
         try:
@@ -86,7 +88,8 @@ def client_handler(conn):
 def thread_conexoes(server_socket):
     """
     THREAD 1: GERENCIADORA DE CONEXÕES.
-    Responsável única e exclusivamente por executar o 'accept()' e receber novos nós no sistema.
+    Responsável por executar o 'accept()' e receber novos nós no sistema.  
+    Quando alguém conecta, ela contrata um client_handler pra cuidar do cliente.
     """
     while True:
         try:
@@ -101,7 +104,7 @@ def thread_conexoes(server_socket):
 def thread_algoritmo():
     """
     THREAD 2: NÚCLEO DO ALGORITMO DE EXCLUSÃO MÚTUA.
-    Consome os eventos da 'event_queue' um por um, garantindo a atomicidade lógica do algoritmo.
+   Lê a fila de mensagens uma por uma, de forma isolada, evitando condições de corrida.
     """
     global current_in_cs
     while True:
@@ -137,7 +140,7 @@ def thread_algoritmo():
                 
                 # Verifica se há processos aguardando na fila
                 if request_queue:
-                    # Remove o primeiro processo da fila (política FIFO/First-In, First-Out) 
+                    # Remove o primeiro processo da fila (FIFO) 
                     next_pid = request_queue.pop(0)
                     current_in_cs = next_pid
                     # Concede o acesso ao próximo da fila enviando o GRANT 
