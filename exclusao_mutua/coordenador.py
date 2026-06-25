@@ -15,7 +15,7 @@ PORT = 5000         # porta TCP utilizada para escutar as conexões dos processo
 request_queue = []   # fila convencional (FIFO) que armazena a ordem dos PIDs que aguardam a Região Crítica.
 counts = {}          # dicionário pra anotar quantas vezes cada processo usou a Região Crítica.
 sockets_map = {}     # mapeamento de {PID: objeto_socket} para saber por qual canal responder a cada processo.
-current_in_cs = None # guarda quem está usando a Região Crítica AGORA. Se for None, tá livre.
+
 
 # MECANISMO DE SINCRONIZAÇÃO INTERNA (lock)
 # impede que o menu do terminal e o algoritmo mexam na fila ao mesmo tempo e quebrem o código.
@@ -106,7 +106,6 @@ def thread_algoritmo():
     THREAD 2: NÚCLEO DO ALGORITMO DE EXCLUSÃO MÚTUA.
    Lê a fila de mensagens uma por uma, de forma isolada, evitando condições de corrida.
     """
-    global current_in_cs
     while True:
         # Fica bloqueado aqui até que qualquer thread de escuta insira uma mensagem recebida
         tipo, pid, conn = event_queue.get()
@@ -121,34 +120,29 @@ def thread_algoritmo():
         # Registra no arquivo de texto que uma mensagem foi recebida 
         escrever_log(tipo, pid, "RECEBIDO de")
 
-        # Região lógica de decisão do algoritmo centralizado
         with lock:
-            if tipo == 1:  # MENSAGEM DO TIPO: REQUEST 
-                if current_in_cs is None:
-                    # Se a Região Crítica está livre, o processo requisitante ganha o acesso imediatamente
-                    current_in_cs = pid
-                    # Envia a mensagem GRANT de volta para o socket do processo correspondente 
+            if tipo == 1:  # Alguém pediu pra entrar (REQUEST)
+                # Entra na fila (seja vazia ou não)
+                request_queue.append(pid)
+                
+                # Se o tamanho da fila for exatamente 1, ele é o único. Pode entrar direto!
+                if len(request_queue) == 1:
                     sockets_map[pid].sendall(formatar_msg(2, pid))
                     escrever_log(2, pid, "ENVIADO para")
-                else:
-                    # Se já houver alguém na Região Crítica, coloca o PID no fim da fila de espera 
-                    request_queue.append(pid)
             
-            elif tipo == 3:  # MENSAGEM DO TIPO: RELEASE 
-                # Incrementa o contador de atendimentos concluídos do processo que está saindo
+            elif tipo == 3:  # Alguém avisou que terminou de usar (RELEASE)
                 counts[pid] += 1
                 
-                # Verifica se há processos aguardando na fila
+                # O processo que acabou de sair deve ser o primeiro da fila. Vamos retirá-lo.
                 if request_queue:
-                    # Remove o primeiro processo da fila (FIFO) 
-                    next_pid = request_queue.pop(0)
-                    current_in_cs = next_pid
-                    # Concede o acesso ao próximo da fila enviando o GRANT 
+                    request_queue.pop(0)
+                
+                # Agora olhamos pra fila de novo. Tem alguém esperando?
+                if len(request_queue) > 0:
+                    # Sim! O novo primeiro da fila (posição 0) ganha o sinal verde.
+                    next_pid = request_queue[0]
                     sockets_map[next_pid].sendall(formatar_msg(2, next_pid))
                     escrever_log(2, next_pid, "ENVIADO para")
-                else:
-                    # Se a fila estiver vazia, a Região Crítica fica totalmente liberada
-                    current_in_cs = None
 
 
 def thread_interface():
